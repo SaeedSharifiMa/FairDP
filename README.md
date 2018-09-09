@@ -15,6 +15,9 @@ To learn a fair classifier on a dataset in the dataset folder subject to gamma u
 ```python
 python Reg_Oracle_Fict.py C num_sensitive_features printflag dataset reg_oracle max_iterations gamma_unfairness 'gamma'
 ```
+# Reg_Oracle_Fict.py
+Inputs:
+Outputs:
 To audit for gamma unfairness on a dataset:
 ```python
 python Audit.py num_sensitive_feautures dataset max_iterations 
