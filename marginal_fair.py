@@ -37,13 +37,45 @@ class RegressionLearner:
     def __init__(self):
         self.weights = None
 
-    def fit(self, X, Y, W):
+    def fit(self, X, Y, W, use_dp=False, dp_params=None):
         cost_vec0 = Y * W  # cost vector for predicting zero
         cost_vec1 = (1 - Y) * W
         self.reg0 = linear_model.LinearRegression()
         self.reg0.fit(X, cost_vec0)
         self.reg1 = linear_model.LinearRegression()
+        if np.allclose(X.values[:,-1], 1): # last column is a intercept column
+          new_X = X.values
+        else:
+          new_X = np.concatenate((X.values, np.ones(shape=(X.values.shape[0], 1))), axis=1)
+        hess = (np.dot(new_X.T, new_X))
+        xtc1 = np.dot(new_X.T, cost_vec1)
+        if use_dp:
+          n = new_X.shape[0]
+          K, dp_eps = dp_params
+          print("XTC1 laplace scale:", 2*K*X.shape[0]/dp_eps)
+          xtc1 += np.random.laplace(2*K*X.shape[0]/dp_eps, size=xtc1.shape)
+        priv_c1 = np.dot(hess, xtc1)
+        self.reg1.intercept_ = priv_c1[-1]
+        self.reg1.weights_ = priv_c1[:-1]
         self.reg1.fit(X, cost_vec1)
+
+    def train(self, X, Y, W):
+      cost_vec0 = Y * W
+      cost_vec1 = (1-Y) * W
+      self.reg0 = linear_model.LinearRegression()
+      self.reg0.fit(X, cost_vec0)
+      self.reg1 = linear_model.LinearRegression()
+      if np.allclose(X[:,-1],1): # last column is a intercept column
+        new_X = X
+      else:
+        new_X = np.concatenate(X, np.ones(shape=(X.shape[0], 1)), axis=1)
+      hess = (np.dot(new_X.T, new_X))
+      xtc1 = np.dot(new_X.T, cost_vec1)
+      if use_dp:
+        xtc1 += np.random.laplace(2*K*X.shape[0])
+      priv_c1 = np.dot(hess, xtc1)
+      self.reg1.intercept_ = priv_c1[-1]
+      self.reg1.weights_ = priv_c1[:-1]
 
     def predict(self, X):
         pred0 = self.reg0.predict(X)
@@ -263,13 +295,16 @@ def run_eps_list_FP(eps_list, dataset):
     a_prime[y == 1] = 0  # hack: setting protected attrs to be 0 for
                          # negative examples
     sens_attr = list(a_prime.columns)
+    n = x.shape[0]
 
     gamma_values = {}
     err_values = {}
     eps_values = {}
     for eps in eps_list:
         res_tuple = red.expgrad(x, a_prime, y, learner,
-                                cons=marginal_EO(sens_attr), eps=eps)
+                                cons=marginal_EO(sens_attr), eps=eps,
+                                use_dp=True, dp_eps=.1, dp_delta=1/n**2,
+                                debug=True)
         weighted_pred = weighted_predictions(res_tuple, x)
         err_values[eps] = sum(np.abs(y - weighted_pred)) / len(y)  # err 
         gamma_values[eps] = audit.audit(weighted_pred, x, a, y)    # gamma
@@ -278,6 +313,7 @@ def run_eps_list_FP(eps_list, dataset):
     d = {'err' : list(err_values.values()), 'gamma' :
          list(gamma_values.values()), 'input eps' : eps_list,
          'empirical eps' : list(eps_values.values())}
+    print(d)
     return pd.DataFrame(data=d)
 
 
@@ -358,8 +394,10 @@ fairness
     binarize_sens_attr(a_prime)
     a_prime[y == 1] = 0
     sens_attr = list(a.columns)
+    n = x.shape[0]
     res_tuple = red.expgrad(x, a_prime, y, learner,
                             cons=marginal_EO(sens_attr), eps=eps,
+                            use_dp=True, dp_eps=.1, dp_delta=1/n**2,
                             debug=True)
     weighted_pred = weighted_predictions(res_tuple, x)
     gamma = audit.audit(weighted_pred, x, a, y)
@@ -379,12 +417,13 @@ base_eps_list = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008,
             0.009, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.09,
             0.1, 0.2, 0.4, 0.8, 1]
 
-eps_list = list(sorted(set(base_eps_list + list(np.linspace(0.01, 0.2, 51)))))
+eps_list = sorted(set(base_eps_list + list(np.linspace(0.01, 0.2, 51))))
 
 
 data_list = ['student', 'communities', 'adult', 'lawschool']
 
 for dataset in data_list:
     print('Current dataset: ' + dataset)
-    data = run_eps_list_FP(eps_list, dataset)
-    pickle.dump(data, open(dataset+'_fp_exp.p', 'wb'))
+    #data = run_eps_list_FP(eps_list, dataset)
+    data = run_eps_single(0.05, dataset)
+    #pickle.dump(data, open(dataset+'_fp_exp.p', 'wb'))

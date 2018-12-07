@@ -42,7 +42,7 @@ class _GapResult:
 class _Lagrangian:
     # Operations related to the Lagrangian
     def __init__(self, dataX, dataA, dataY, learner, cons, eps, B,
-                 opt_lambda=True, debug=False):
+                 opt_lambda=True, use_dp=False, debug=False):
         self.X = dataX
         self.obj = moments.MisclassError()
         self.obj.init(dataX, dataA, dataY)
@@ -61,6 +61,7 @@ class _Lagrangian:
         self.n_oracle_calls = 0
         self.last_linprog_n_hs = 0
         self.last_linprog_result = None
+        self.use_dp = use_dp
         
     def eval_from_error_gamma(self, error, gamma, lambda_vec):
         # Return the value of the Lagrangian.
@@ -149,7 +150,7 @@ class _Lagrangian:
                                  self.eval_gap(h, lambda_vec, nu))
         return self.last_linprog_res
 
-    def best_h(self, lambda_vec):
+    def best_h(self, lambda_vec, use_dp=False, dp_params=None):
         # Return the classifier that solves the best-response problem
         # for the vector of Lagrange multipliers lambda_vec.
     
@@ -160,7 +161,7 @@ class _Lagrangian:
         redW = self.n*redW/redW.sum()
 
         classifier = pickle.loads(self.pickled_learner)
-        classifier.fit(self.X, redY, redW)
+        classifier.fit(self.X, redY, redW, use_dp=use_dp, dp_params=dp_params)
         self.n_oracle_calls += 1
         
         h = lambda X: classifier.predict(X)
@@ -220,7 +221,7 @@ _RUN_LP_STEP = True
 
 
 def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01,
-            T=50, nu=None, eta_mul=2.0, debug=False):
+            T=50, nu=None, beta=0.01, eta_mul=2.0, use_dp=False, dp_eps=100, dp_delta=1, debug=False):
     """
     Return a fair classifier under specified fairness constraints
     via exponentiated-gradient reduction.
@@ -266,17 +267,45 @@ def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01,
                                " last_t best_t n_oracle_calls")
 
     n = dataX.shape[0]
+    #dataA = pd.Series(dataA)
     #assert len(dataX.shape)==2 and len(dataA.shape)==1 and len(dataY.shape)==1, \
     #    "dataX must be a DataFrame and dataY and dataA must be Series"
-    #assert dataA.shape[0]==n and dataY.shape[0]==n, \
-    #    "the number of rows in all data fields must match"
+    assert dataA.shape[0]==n and dataY.shape[0]==n, \
+        "the number of rows in all data fields must match"
 
     if debug:
         print("...EG STARTING")
 
     B = 1/eps
     lagr = _Lagrangian(dataX, dataA, dataY, learner, cons, eps, B,
-                       debug=debug)
+                       use_dp=use_dp, debug=debug)
+    allA = np.unique(dataA).ravel()
+    sizeA = allA.size
+    vcdim = dataX.shape[1]+1
+    allY = np.unique(dataY).ravel()
+    from itertools import product
+    #print("ay", allA, allY, allA.shape, allY.shape, [v for v in allA], [v for v in allY])
+    AYpairs = list(product([v for v in allA], [v for v in allY]))
+    AYcounts = [-1 for _ in AYpairs]
+    for i, (a,y) in enumerate(AYpairs):
+      As = pd.Series(dataA.iloc[:,0]==a)
+      Ys = pd.Series(dataY==y)
+      AYcount = np.sum(As & Ys)
+      AYcounts[i] = AYcount if AYcount > 2 else n
+    minp_ay = np.min(AYcounts)/n
+    print("min probs:", minp_ay, minp_ay*n, n)
+    if use_dp:
+      T_numerator = B*np.sqrt(np.log(4*sizeA-3))*n*dp_eps
+      T_denominator = 2*(2*B*sizeA+1)*np.sqrt(np.log(1/dp_delta))*(vcdim*np.log(n)+np.log(2/beta))
+      T = T_numerator/T_denominator
+      T = max(1, int(T))
+      
+      eta_mul = 0.5*np.sqrt(np.log(4*sizeA-3)/T)
+      
+      lap_scale_numerator = 8*sizeA*np.sqrt(T*np.log(1/dp_delta))
+      lap_scale_denominator = (minp_ay*n - 1)*dp_eps
+      lap_scale = lap_scale_numerator/lap_scale_denominator
+      print("dp T {} eta_mul {} lap_scale {}".format(T, eta_mul, lap_scale))
 
     theta  = pd.Series(0, lagr.cons.index)
     Qsum = pd.Series()
@@ -284,18 +313,21 @@ def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01,
     gaps_EG = []
     gaps = []
     Qs = []
-
     last_regr_checked = _REGR_CHECK_START_T
     last_gap = np.PINF
-    for t in range(0, T):
+    for t in range(T):
         if debug:
             print("...iter=%03d" % t)
-
         lambda_vec = B*np.exp(theta) / (1+np.exp(theta).sum())
         lambdas[t] = lambda_vec
         lambda_EG = lambdas.mean(axis=1)
 
-        h, h_idx = lagr.best_h(lambda_vec)
+        if use_dp:
+          K = (4*sizeA*B - 3)/(n*minp_ay - 1)
+          dp_params = K, dp_eps
+        else:
+          dp_params = None
+        h, h_idx = lagr.best_h(lambda_vec, use_dp=use_dp, dp_params=dp_params)
         pred_h = h(dataX)
 
         if t == 0:
@@ -311,6 +343,9 @@ def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01,
             Qsum.at[h_idx] = 0.0
         Qsum[h_idx] += 1.0
         gamma = lagr.gammas[h_idx]
+        if use_dp:
+          gamma += np.random.laplace(lap_scale, size=gamma.shape)
+        
 
         Q_EG = Qsum / Qsum.sum()
         res_EG = lagr.eval_gap(Q_EG, lambda_EG, nu)
