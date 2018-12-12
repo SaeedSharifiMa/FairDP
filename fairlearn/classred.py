@@ -295,6 +295,7 @@ def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01,
     minp_ay = np.min(AYcounts)/n
     print("min probs:", minp_ay, minp_ay*n, n)
     if use_dp:
+      print("b", B, "n", n, "eps", dp_eps, sizeA)
       T_numerator = B*np.sqrt(np.log(4*sizeA-3))*n*dp_eps
       T_denominator = 2*(2*B*sizeA+1)*np.sqrt(np.log(1/dp_delta))*(vcdim*np.log(n)+np.log(2/beta))
       T = T_numerator/T_denominator

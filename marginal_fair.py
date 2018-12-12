@@ -3,6 +3,7 @@
 
 from __future__ import print_function
 
+import argparse
 import functools
 import numpy as np
 import pandas as pd
@@ -275,7 +276,7 @@ def print_marginal_avg_pred(x, a, res_tuple):
         print('avg prediction for ', j, sum(w_predj)/len(w_predj))
 
 
-def run_eps_list_FP(eps_list, dataset):
+def run_eps_list_FP(eps_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, beta=.01):
     if dataset == 'communities':
         x, a, y = parser1.clean_communities()
     elif dataset == 'communities2':
@@ -303,8 +304,8 @@ def run_eps_list_FP(eps_list, dataset):
     for eps in eps_list:
         res_tuple = red.expgrad(x, a_prime, y, learner,
                                 cons=marginal_EO(sens_attr), eps=eps,
-                                use_dp=True, dp_eps=.1, dp_delta=1/n**2,
-                                debug=True)
+                                use_dp=use_dp, dp_eps=dp_eps, dp_delta=dp_delta,
+                                beta=beta, debug=True)
         weighted_pred = weighted_predictions(res_tuple, x)
         err_values[eps] = sum(np.abs(y - weighted_pred)) / len(y)  # err 
         gamma_values[eps] = audit.audit(weighted_pred, x, a, y)    # gamma
@@ -397,7 +398,7 @@ fairness
     n = x.shape[0]
     res_tuple = red.expgrad(x, a_prime, y, learner,
                             cons=marginal_EO(sens_attr), eps=eps,
-                            use_dp=True, dp_eps=.1, dp_delta=1/n**2,
+                            use_dp=True, dp_eps=10**1, dp_delta=1/n**2,
                             debug=True)
     weighted_pred = weighted_predictions(res_tuple, x)
     gamma = audit.audit(weighted_pred, x, a, y)
@@ -410,20 +411,36 @@ fairness
     print('FP: ', compute_FP(a, y, weighted_pred))
 
 
-
-
-
+data_list = ['student', 'communities', 'adult', 'lawschool']
 base_eps_list = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008,
             0.009, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.09,
             0.1, 0.2, 0.4, 0.8, 1]
-
 eps_list = sorted(set(base_eps_list + list(np.linspace(0.01, 0.2, 51))))
 
+def setup_argparse():
+  parser = argparse.ArgumentParser('run fair MSR reduction')
+  parser.add_argument('-eps', '--dp_epsilon', type=float, default=-1, help='epsilon parameter for differential privacy. do not set to run nonprivate algorithm')
+  parser.add_argument('-delta', '--dp_delta', type=float, help='delta parameter for differential privacy')
+  parser.add_argument('-beta', type=float, default=.01, help='failure probability')
+  parser.add_argument('-d', '--dataset', choices=data_list, help='dataset to analyse')
+  return parser
 
-data_list = ['student', 'communities', 'adult', 'lawschool']
 
-for dataset in data_list:
+
+if __name__=='__main__':
+  parser = setup_argparse()
+  args = parser.parse_args()
+  if args.dp_epsilon==-1:
+    data = run_eps_list_FP(eps_list, args.dataset, use_dp=False, beta=args.beta)
+  else:
+    data = run_eps_list_FP(eps_list, args.dataset, use_dp=True, dp_eps=args.dp_epsilon, dp_delta=args.dp_delta, beta=args.beta)
+  pickle.dump(data, open(dataset+'_fp_exp.p', 'wb'))
+
+
+
+"""
+for dataset in data_list[3:]:
     print('Current dataset: ' + dataset)
-    #data = run_eps_list_FP(eps_list, dataset)
-    data = run_eps_single(0.05, dataset)
-    #pickle.dump(data, open(dataset+'_fp_exp.p', 'wb'))
+    data = run_eps_list_FP(eps_list, dataset)
+    #data = run_eps_single(0.01, dataset)
+    pickle.dump(data, open(dataset+'_fp_exp.p', 'wb'))"""
