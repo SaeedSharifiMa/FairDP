@@ -4,7 +4,7 @@ import cvxopt as cvx
 
 class dp_postproc:
     
-    def eq_odds(Yhat, A, Y, epsilon, gamma, beta):
+    def eq_odds(Yhat, A, Y, qhat, epsilon, gamma, beta):
 
         # This function performs the DP_postprocessing algorithm of the paper.
 
@@ -12,6 +12,7 @@ class dp_postproc:
         # Yhat: base classifier estimates
         # A: "binary" sensitive attribute
         # Y: true labels
+        # qhat: empirical distribution of Yhat, A, Y
         # epsilon: privacy parameter
         # gamma: fairness violation
         # beta: confidence parameter
@@ -22,7 +23,7 @@ class dp_postproc:
 
         m = len(Y)
         
-        q_dp = dp_postproc.qhat(Yhat, A, Y) + np.random.laplace(scale= 2/(m*epsilon), size=8).reshape((2,2,2))
+        q_dp = qhat + np.random.laplace(scale= 2/(m*epsilon), size=8).reshape((2,2,2))
         minq_dp0 = np.min([q_dp[1,0,0] + q_dp[0,0,0], q_dp[1,1,0] + q_dp[0,1,0]]) 
         minq_dp1 = np.min([q_dp[1,0,1] + q_dp[0,0,1], q_dp[1,1,1] + q_dp[0,1,1]])
         fpr_bound = (4*np.log(8/beta))/(minq_dp0*m*epsilon)
