@@ -44,7 +44,7 @@ for i in range(len(gamma_list)):
 
 plt.plot(err, unf, 'ro')
 plt.xlabel('error')
-plt.ylabel('fariness violation')
+plt.ylabel('fairness violation')
 plt.title('dp_postproc, lawschool, base_clf = LR, epsilon = %i' %epsilon)
 plt.savefig('output.png')
 plt.show()
