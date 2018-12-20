@@ -22,6 +22,11 @@ class dp_postproc:
         # unftilde: fairness violation
 
         m = len(Y)
+        rates = dp_postproc.rates(qhat)
+        fpr0 = rates[0]
+        fpr1 = rates[1]
+        tpr0 = rates[2]
+        tpr1 = rates[3]
         
         q_dp = qhat + np.random.laplace(scale= 2/(m*epsilon), size=8).reshape((2,2,2))
         minq_dp0 = np.min([q_dp[1,0,0] + q_dp[0,0,0], q_dp[1,1,0] + q_dp[0,1,0]]) 
@@ -50,9 +55,16 @@ class dp_postproc:
         p = np.array(sol['x']).reshape((2,2))
         p[p > 1] = 1
         p[p < 0] = 0
-        Ytilde = dp_postproc.postproc_label(Yhat, A, p)
-        errtilde = dp_postproc.error(Ytilde, Y)
-        unftilde = dp_postproc.unfairness(Ytilde, A, Y)
+        #Ytilde = dp_postproc.postproc_label(Yhat, A, p)
+        #errtilde = dp_postproc.error(Ytilde, Y)
+        #unftilde = dp_postproc.unfairness(Ytilde, A, Y)
+        errtilde = ( (qhat[0,0,0]-qhat[0,0,1])*p[0,0] + (qhat[0,1,0]-qhat[0,1,1])*p[0,1] + 
+                   (qhat[1,0,0]-qhat[1,0,1])*p[1,0] + (qhat[1,1,0]-qhat[1,1,1])*p[1,1] +
+                    np.sum(qhat[:,:,1])
+                   )
+        unfairness_fpr = abs(fpr1*p[1,1] + (1-fpr1)*p[0,1] - fpr0*p[1,0] - (1-fpr0)*p[0,0])
+        unfairness_tpr = abs(tpr1*p[1,1] + (1-tpr1)*p[0,1] - tpr0*p[1,0] - (1-tpr0)*p[0,0])
+        unftilde = max(unfairness_fpr, unfairness_tpr)
         return(errtilde, unftilde)
 
     def postproc_label(Yhat, A, p):

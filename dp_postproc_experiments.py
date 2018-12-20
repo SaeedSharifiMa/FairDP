@@ -17,13 +17,13 @@ import matplotlib.pyplot as plt
 # adult: 1
 X, A, Y = imp.clean_lawschool(1)
 base_clf = LR
-epsilon = 10
+epsilon = 5
 base_gamma_list = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008,
             0.009, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09,
             0.1, 0.2, 0.4, 0.8, 1]
 gamma_list = sorted(set(base_gamma_list + list(np.linspace(0.01, 0.2, 51))))
 beta = 0.05
-num_rounds = 1
+num_rounds = 1000
 
 fitted_clf = base_clf(random_state=123).fit(X, Y)
 Yhat = fitted_clf.predict(X)
@@ -37,7 +37,6 @@ err = []
 unf = []
 
 for i in range(len(gamma_list)):
-    if i%10 == 0: print(i)
     for j in range(num_rounds):
         errtilde[i,j], unftilde[i,j] = dpalgo1.dp_postproc.eq_odds(Yhat, A, Y, qhat, epsilon, gamma_list[i], beta)
     err.append(np.mean(errtilde[i,errtilde[i,:] != -1]))
