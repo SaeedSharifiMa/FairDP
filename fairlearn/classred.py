@@ -220,7 +220,7 @@ _MIN_T = 1
 _RUN_LP_STEP = True
 
 
-def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01,
+def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01, B=None,
             T=50, nu=None, beta=0.01, eta_mul=2.0, use_dp=False, dp_eps=100, dp_delta=1, debug=False):
     """
     Return a fair classifier under specified fairness constraints
@@ -275,8 +275,8 @@ def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01,
 
     if debug:
         print("...EG STARTING")
-
-    B = 1/eps
+    if B is None:
+      B = 1/eps
     lagr = _Lagrangian(dataX, dataA, dataY, learner, cons, eps, B,
                        use_dp=use_dp, debug=debug)
     allA = np.unique(dataA).ravel()

@@ -276,7 +276,7 @@ def print_marginal_avg_pred(x, a, res_tuple):
         print('avg prediction for ', j, sum(w_predj)/len(w_predj))
 
 
-def run_eps_list_FP(eps_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, beta=.01):
+def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, beta=.01):
     if dataset == 'communities':
         x, a, y = parser1.clean_communities()
     elif dataset == 'communities2':
@@ -289,6 +289,8 @@ def run_eps_list_FP(eps_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, bet
         x, a, y = parser1.clean_adult()
     else:
         raise Exception('Dataset not in range!')
+    print(x.columns)
+    print(a.columns)
 
     learner = RegressionLearner()
     a_prime = a.copy(deep=True)
@@ -298,21 +300,24 @@ def run_eps_list_FP(eps_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, bet
     sens_attr = list(a_prime.columns)
     n = x.shape[0]
 
+    x_no_sens = x.copy(deep=True)
+    x_no_sens = x_no_sens.drop(sens_attr, axis=1)
+    print(x_no_sens.columns)
     gamma_values = {}
     err_values = {}
     eps_values = {}
-    for eps in eps_list:
-        res_tuple = red.expgrad(x, a_prime, y, learner,
-                                cons=marginal_EO(sens_attr), eps=eps,
+    for eps, B in eps_B_list:
+        res_tuple = red.expgrad(x_no_sens, a_prime, y, learner,
+                                cons=marginal_EO(sens_attr), eps=eps, B=B,
                                 use_dp=use_dp, dp_eps=dp_eps, dp_delta=dp_delta,
                                 beta=beta, debug=True)
-        weighted_pred = weighted_predictions(res_tuple, x)
-        err_values[eps] = sum(np.abs(y - weighted_pred)) / len(y)  # err 
-        gamma_values[eps] = audit.audit(weighted_pred, x, a, y)    # gamma
-        eps_values[eps] = compute_FP(a_prime, y, weighted_pred)
-        print(eps_values[eps])
+        weighted_pred = weighted_predictions(res_tuple, x_no_sens)
+        err_values[eps, B] = sum(np.abs(y - weighted_pred)) / len(y)  # err 
+        gamma_values[eps, B] = audit.audit(weighted_pred, x_no_sens, a, y)    # gamma
+        eps_values[eps, B] = compute_FP(a_prime, y, weighted_pred)
+        print(eps_values[eps, B])
     d = {'err' : list(err_values.values()), 'gamma' :
-         list(gamma_values.values()), 'input eps' : eps_list,
+         list(gamma_values.values()), 'input eps' : eps_B_list,
          'empirical eps' : list(eps_values.values())}
     print(d)
     return pd.DataFrame(data=d)
@@ -382,7 +387,6 @@ fairness
         x, a, y = parser1.clean_adult()
     else:
         raise Exception('Dataset not in range!')
-
     learner0 = RegressionLearner()
     # directly running oracle for comparison
     learner0.fit(x, y, np.ones(len(y)))
@@ -412,10 +416,17 @@ fairness
 
 
 data_list = ['student', 'communities', 'adult', 'lawschool']
-base_eps_list = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008,
+
+# this is the original list of gamma values
+base_gamma_list = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008,
             0.009, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.09,
             0.1, 0.2, 0.4, 0.8, 1]
-eps_list = sorted(set(base_eps_list + list(np.linspace(0.01, 0.2, 51))))
+gamma_list = sorted(set(base_gamma_list + list(np.linspace(0.01, 0.2, 51))))
+
+# by default, run on gamma, B = (gamma, 1/gamma) for each element in gamma_list
+# to run on a different set of gamma, B pairs, change this list
+default_gamma_B_list = [(gamma, 1/gamma) for gamma in gamma_list]
+
 
 def setup_argparse():
   parser = argparse.ArgumentParser('run fair MSR reduction')
@@ -431,10 +442,10 @@ if __name__=='__main__':
   parser = setup_argparse()
   args = parser.parse_args()
   if args.dp_epsilon==-1:
-    data = run_eps_list_FP(eps_list, args.dataset, use_dp=False, beta=args.beta)
+    data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=False, beta=args.beta)
   else:
-    data = run_eps_list_FP(eps_list, args.dataset, use_dp=True, dp_eps=args.dp_epsilon, dp_delta=args.dp_delta, beta=args.beta)
-  pickle.dump(data, open(dataset+'_fp_exp.p', 'wb'))
+    data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=True, dp_eps=args.dp_epsilon, dp_delta=args.dp_delta, beta=args.beta)
+  pickle.dump(data, open(args.dataset+'_fp_exp.p', 'wb'))
 
 
 
