@@ -276,7 +276,7 @@ def print_marginal_avg_pred(x, a, res_tuple):
         print('avg prediction for ', j, sum(w_predj)/len(w_predj))
 
 
-def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, beta=.01):
+def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, beta=.01, num_rounds=1):
     if dataset == 'communities':
         x, a, y = parser1.clean_communities()
     elif dataset == 'communities2':
@@ -307,14 +307,21 @@ def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, b
     err_values = {}
     eps_values = {}
     for eps, B in eps_B_list:
-        res_tuple = red.expgrad(x_no_sens, a_prime, y, learner,
-                                cons=marginal_EO(sens_attr), eps=eps, B=B,
-                                use_dp=use_dp, dp_eps=dp_eps, dp_delta=dp_delta,
-                                beta=beta, debug=True)
-        weighted_pred = weighted_predictions(res_tuple, x_no_sens)
-        err_values[eps, B] = sum(np.abs(y - weighted_pred)) / len(y)  # err 
-        gamma_values[eps, B] = audit.audit(weighted_pred, x_no_sens, a, y)    # gamma
-        eps_values[eps, B] = compute_FP(a_prime, y, weighted_pred)
+        all_err_values = []
+        all_gamma_values = []
+        all_eps_values = []
+        for _ in range(num_rounds):
+            res_tuple = red.expgrad(x_no_sens, a_prime, y, learner,
+                                    cons=marginal_EO(sens_attr), eps=eps, B=B,
+                                    use_dp=use_dp, dp_eps=dp_eps, dp_delta=dp_delta,
+                                    beta=beta, debug=True)
+            weighted_pred = weighted_predictions(res_tuple, x_no_sens)
+            all_err_values.append(sum(np.abs(y - weighted_pred)) / len(y))  # err 
+            all_gamma_values.append(audit.audit(weighted_pred, x_no_sens, a, y))    # gamma
+            all_eps_values.append(compute_FP(a_prime, y, weighted_pred))
+        err_values[eps, B] = sum(all_err_values)/num_rounds
+        gamma_values[eps, B] = sum(all_gamma_values)/num_rounds
+        eps_values[eps, B] = sum(all_eps_values)/num_rounds
         print(eps_values[eps, B])
     d = {'err' : list(err_values.values()), 'gamma' :
          list(gamma_values.values()), 'input eps' : eps_B_list,
@@ -434,6 +441,7 @@ def setup_argparse():
   parser.add_argument('-delta', '--dp_delta', type=float, help='delta parameter for differential privacy')
   parser.add_argument('-beta', type=float, default=.01, help='failure probability')
   parser.add_argument('-d', '--dataset', choices=data_list, help='dataset to analyse')
+  parser.add_argument('-n', '--num_rounds', type=int, default=1, help='number of rounds to run the differentially private algorithm for')
   return parser
 
 
@@ -444,14 +452,5 @@ if __name__=='__main__':
   if args.dp_epsilon==-1:
     data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=False, beta=args.beta)
   else:
-    data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=True, dp_eps=args.dp_epsilon, dp_delta=args.dp_delta, beta=args.beta)
+      data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=True, dp_eps=args.dp_epsilon, dp_delta=args.dp_delta, beta=args.beta, num_rounds=args.num_rounds)
   pickle.dump(data, open(args.dataset+'_fp_exp.p', 'wb'))
-
-
-
-"""
-for dataset in data_list[3:]:
-    print('Current dataset: ' + dataset)
-    data = run_eps_list_FP(eps_list, dataset)
-    #data = run_eps_single(0.01, dataset)
-    pickle.dump(data, open(dataset+'_fp_exp.p', 'wb'))"""
