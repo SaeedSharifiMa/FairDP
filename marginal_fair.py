@@ -295,8 +295,9 @@ def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, b
     learner = RegressionLearner()
     a_prime = a.copy(deep=True)
     binarize_sens_attr(a_prime)
-    a_prime[y == 1] = 0  # hack: setting protected attrs to be 0 for
-                         # negative examples
+    binarize_sens_attr(a)
+    #a_prime[y == 1] = 0  # hack: setting protected attrs to be 0 for
+    #                     # negative examples
     sens_attr = list(a_prime.columns)
     n = x.shape[0]
 
@@ -319,6 +320,10 @@ def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, b
             all_err_values.append(sum(np.abs(y - weighted_pred)) / len(y))  # err 
             all_gamma_values.append(audit.audit(weighted_pred, x_no_sens, a, y))    # gamma
             all_eps_values.append(compute_FP(a_prime, y, weighted_pred))
+            print('gamma ', all_gamma_values[-1])
+            print('err ', all_err_values[-1])
+            print('EO: ', compute_EO(a_prime, y, weighted_pred))
+            print('FP: ', compute_FP(a, y, weighted_pred))
         err_values[eps, B] = sum(all_err_values)/num_rounds
         gamma_values[eps, B] = sum(all_gamma_values)/num_rounds
         eps_values[eps, B] = sum(all_eps_values)/num_rounds
@@ -404,7 +409,7 @@ fairness
     learner = RegressionLearner()
     a_prime = a.copy(deep=True)
     binarize_sens_attr(a_prime)
-    a_prime[y == 1] = 0
+    #a_prime[y == 1] = 0
     sens_attr = list(a.columns)
     n = x.shape[0]
     res_tuple = red.expgrad(x, a_prime, y, learner,
