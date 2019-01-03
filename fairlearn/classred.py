@@ -136,6 +136,8 @@ class _Lagrangian:
         b_eq = np.ones(1)
         res = opt.linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq)
         print(res.success, res.status, res.fun, res.nit, res.message)
+        if not res.success:
+          return self.last_linprog_res
         h = pd.Series(res.x[:-1], self.hs.index)
         dual_c = np.concatenate((b_ub, -b_eq))
         dual_A_ub = np.concatenate(
@@ -145,6 +147,8 @@ class _Lagrangian:
             (None, None) if i==n_cons else (0, None) for i in range(n_cons+1)]
         res_dual = opt.linprog(dual_c, A_ub=dual_A_ub, b_ub=dual_b_ub,
                                bounds=dual_bounds)
+        if not res.success:
+          return self.last_linprog_res
         lambda_vec = pd.Series(res_dual.x[:-1], self.cons.index)
         self.last_linprog_n_hs = n_hs
         self.last_linprog_res = (h, lambda_vec,
@@ -218,7 +222,7 @@ _MIN_T = 1
 # If _RUN_LP_STEP is set to True, then each step of exponentiated gradient is
 # followed by the saddle point optimization over the convex hull of
 # classifiers returned so far.
-_RUN_LP_STEP = False#True
+_RUN_LP_STEP = True
 
 
 def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01, B=None,
