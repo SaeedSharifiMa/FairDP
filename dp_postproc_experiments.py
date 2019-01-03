@@ -13,17 +13,19 @@ import matplotlib.pyplot as plt
 # Use imp.clean_communities(num_sens), imp.clean_lawschool(num_sens), imp.clean_adult(num_sens)
 # to import a data set.
 # communities: 1, 2, 6, 8, 13
-# lawschool: 1 gender, others look bad.
+# lawschool: 1
 # adult: 1
-X, A, Y = imp.clean_lawschool(1)
+#############################################
+X, A, Y = imp.clean_communities(1)
+epsilon = 1
 base_clf = LR
-epsilon = 5
+#############################################
 base_gamma_list = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008,
             0.009, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09,
             0.1, 0.2, 0.4, 0.8, 1]
 gamma_list = sorted(set(base_gamma_list + list(np.linspace(0.01, 0.2, 51))))
 beta = 0.05
-num_rounds = 1000
+num_rounds = 1
 
 fitted_clf = base_clf(random_state=123).fit(X, Y)
 Yhat = fitted_clf.predict(X)
@@ -45,6 +47,8 @@ for i in range(len(gamma_list)):
 plt.plot(err, unf, 'ro')
 plt.xlabel('error')
 plt.ylabel('fairness violation')
-plt.title('dp_postproc, lawschool, base_clf = LR, epsilon = %i' %epsilon)
-plt.savefig('output.png')
+#####################################
+plt.title('dp_postproc, communities, base_clf = LR, epsilon = %i' %epsilon)
+plt.savefig('figures/postprocessing/postproc_communities_eps%i.png' %epsilon)
+#####################################
 plt.show()
