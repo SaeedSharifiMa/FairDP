@@ -276,7 +276,7 @@ def print_marginal_avg_pred(x, a, res_tuple):
         print('avg prediction for ', j, sum(w_predj)/len(w_predj))
 
 
-def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, beta=.01, num_rounds=1, eq_fp=False):
+def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, beta=.01, num_rounds=1, eq_fp=False, use_sa=False):
     if dataset == 'communities':
         x, a, y = parser1.clean_communities()
     elif dataset == 'communities2':
@@ -301,9 +301,10 @@ def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, b
                            # negative examples
     sens_attr = list(a_prime.columns)
     n = x.shape[0]
-
+    
     x_no_sens = x.copy(deep=True)
-    x_no_sens = x_no_sens.drop(sens_attr, axis=1)
+    if not use_sa:
+      x_no_sens = x_no_sens.drop(sens_attr, axis=1)
     print(x_no_sens.columns)
     gamma_values = {}
     err_values = {}
@@ -438,7 +439,7 @@ gamma_list = sorted(set(base_gamma_list + list(np.linspace(0.01, 0.2, 51))))
 
 # by default, run on gamma, B = (gamma, 1/gamma) for each element in gamma_list
 # to run on a different set of gamma, B pairs, change this list
-default_eps_B_list = [(gamma, 1/gamma) for gamma in gamma_list]
+default_eps_B_list = [(gamma, 1/gamma) for gamma in gamma_list][:2]
 
 
 def setup_argparse():
@@ -449,6 +450,7 @@ def setup_argparse():
   parser.add_argument('-d', '--dataset', choices=data_list, help='dataset to analyse')
   parser.add_argument('-n', '--num_rounds', type=int, default=1, help='number of rounds to run the differentially private algorithm for')
   parser.add_argument('-fp', action='store_true', help='use this flag to only equalize false positives, instead of equalized odds')
+  parser.add_argument('-sa', action='store_true', help='whether to use the sensitive attribute in classification')
   return parser
 
 
@@ -457,7 +459,7 @@ if __name__=='__main__':
   parser = setup_argparse()
   args = parser.parse_args()
   if args.dp_epsilon==-1:
-    data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=False, beta=args.beta, eq_fp=args.fp)
+    data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=False, beta=args.beta, eq_fp=args.fp, use_sa=args.sa)
   else:
-      data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=True, dp_eps=args.dp_epsilon, dp_delta=args.dp_delta, beta=args.beta, num_rounds=args.num_rounds, eq_fp=args.fp)
+      data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=True, dp_eps=args.dp_epsilon, dp_delta=args.dp_delta, beta=args.beta, num_rounds=args.num_rounds, eq_fp=args.fp, use_sa=args.sa)
   pickle.dump(data, open(args.dataset+'_fp_exp.p', 'wb'))
