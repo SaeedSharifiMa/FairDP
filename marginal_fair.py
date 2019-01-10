@@ -38,27 +38,69 @@ class RegressionLearner:
     def __init__(self):
         self.weights = None
 
-    def fit(self, X, Y, W, use_dp=False, dp_params=None):
+    def fit(self, X, Y, W, use_dp=False, dp_params=None, use_sa=False, sens_params=None):
         cost_vec0 = Y * W  # cost vector for predicting zero
         cost_vec1 = (1 - Y) * W
         self.reg0 = linear_model.LinearRegression()
-        self.reg0.fit(X, cost_vec0)
         self.reg1 = linear_model.LinearRegression()
+        self.reg0.fit(X, cost_vec0)
+        self.reg1.fit(X, cost_vec1)
         if np.allclose(X.values[:,-1], 1): # last column is a intercept column
           new_X = X.values
         else:
           new_X = np.concatenate((X.values, np.ones(shape=(X.values.shape[0], 1))), axis=1)
-        hess = (np.dot(new_X.T, new_X))
+        
+        if use_dp:
+          K, dp_eps = dp_params
+          n, d = new_X.shape[0], new_X.shape[1]
+          xtc1_eps = dp_eps
+          if use_sa:
+            sens_ind, balance_eps = sens_params
+            # need to allocate some of dp_eps to each of hessian, xtc0, and xtc1 computations
+            # default to even thirds for each
+            hess_eps, xtc1_eps, xtc0_eps = dp_eps/3, dp_eps/3, dp_eps/3
+            if balance_eps:
+              # otherwise let's try to allocate according to sensitivities
+              split_denom = 2*K*n + d + 1
+              hess_eps = dp_eps*d/split_denom
+              xtc1_eps = dp_eps*2*K*n/split_denom
+              xtc0_eps = dp_eps/split_denom
+
+        hess = np.dot(new_X.T, new_X)
         xtc1 = np.dot(new_X.T, cost_vec1)
         if use_dp:
-          n = new_X.shape[0]
-          K, dp_eps = dp_params
-          print("XTC1 laplace scale:", 2*K*X.shape[0]/dp_eps)
-          xtc1 += np.random.laplace(2*K*X.shape[0]/dp_eps, size=xtc1.shape)
-        priv_c1 = np.dot(hess, xtc1)
-        self.reg1.intercept_ = priv_c1[-1]
-        self.reg1.weights_ = priv_c1[:-1]
-        self.reg1.fit(X, cost_vec1)
+          print("XTC1 laplace scale:", 2*K*n/xtc1_eps)
+          xtc1 += np.random.laplace(2*K*n/xtc1_eps, size=xtc1.shape)
+          if use_sa:
+            print("XTC0 laplace scale:", 1/xtc0_eps)
+            print("XTX laplace scale:", d/hess_eps)
+            # compute noisy xtc0
+            xtc0 = np.dot(new_X.T, cost_vec0)
+            xtc0[sens_ind] += np.random.laplace(1/xtc0_eps)
+
+            # compute noisy hessian
+            hess_noise = np.zeros_like(hess)
+            # break epsilon into d parts
+            each_hess_eps = hess_eps/d
+            for i in range(new_X.shape[1]):
+              if i == sens_ind:
+                hess_noise[sens_ind, sens_ind] = 0.5*np.random.laplace(np.max(np.square(new_X[:, sens_ind])))
+              else:
+                hess_noise[i, sens_ind] = np.random.laplace(np.max(np.abs(new_X[:,i]))/each_hess_eps)
+            hess_noise += hess_noise.T
+            hess += hess_noise
+
+            # make private reg0
+            priv_c0 = np.dot(hess, xtc0)
+            self.reg0.intercept_ = priv_c0[-1]
+            self.reg0.weights_ = priv_c0[:-1]
+          else:
+            self.reg0.fit(X, cost_vec0)
+            priv_c1 = np.dot(hess, xtc1)
+            self.reg1.intercept_ = priv_c1[-1]
+            self.reg1.weights_ = priv_c1[:-1]
+        else:
+          self.reg1.fit(X, cost_vec1)
 
     def train(self, X, Y, W):
       cost_vec0 = Y * W
@@ -276,7 +318,7 @@ def print_marginal_avg_pred(x, a, res_tuple):
         print('avg prediction for ', j, sum(w_predj)/len(w_predj))
 
 
-def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, beta=.01, num_rounds=1, eq_fp=False, use_sa=False):
+def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, beta=.01, num_rounds=1, eq_fp=False, use_sa=False, balance_eps=False):
     if dataset == 'communities':
         x, a, y = parser1.clean_communities()
     elif dataset == 'communities2':
@@ -303,8 +345,14 @@ def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, b
     n = x.shape[0]
     
     x_no_sens = x.copy(deep=True)
-    if not use_sa:
+    if use_sa:
+      print(sens_attr[0])
+      print(sens_attr[1:])
+      x_no_sens = x_no_sens.drop(sens_attr[1:], axis=1)
+      sens_col_num = x_no_sens.columns.get_loc(sens_attr[0])
+    else:
       x_no_sens = x_no_sens.drop(sens_attr, axis=1)
+      sens_col_num = None
     print(x_no_sens.columns)
     gamma_values = {}
     err_values = {}
@@ -317,7 +365,8 @@ def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, b
             res_tuple = red.expgrad(x_no_sens, a_prime, y, learner,
                                     cons=marginal_EO(sens_attr), eps=eps, B=B,
                                     use_dp=use_dp, dp_eps=dp_eps, dp_delta=dp_delta,
-                                    beta=beta, debug=True)
+                                    beta=beta, use_sa=use_sa,
+                                    sens_params=(sens_col_num, balance_eps), debug=True)
             weighted_pred = weighted_predictions(res_tuple, x_no_sens)
             all_err_values.append(sum(np.abs(y - weighted_pred)) / len(y))  # err 
             all_gamma_values.append(audit.audit(weighted_pred, x_no_sens, a, y))    # gamma
@@ -451,6 +500,7 @@ def setup_argparse():
   parser.add_argument('-n', '--num_rounds', type=int, default=1, help='number of rounds to run the differentially private algorithm for')
   parser.add_argument('-fp', action='store_true', help='use this flag to only equalize false positives, instead of equalized odds')
   parser.add_argument('-sa', action='store_true', help='whether to use the sensitive attribute in classification')
+  parser.add_argument('-bal_eps', action='store_true', help='whether to balance cost sensitive learner epsilons according to sensitivity')
   return parser
 
 
@@ -461,5 +511,7 @@ if __name__=='__main__':
   if args.dp_epsilon==-1:
     data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=False, beta=args.beta, eq_fp=args.fp, use_sa=args.sa)
   else:
-      data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=True, dp_eps=args.dp_epsilon, dp_delta=args.dp_delta, beta=args.beta, num_rounds=args.num_rounds, eq_fp=args.fp, use_sa=args.sa)
-  pickle.dump(data, open(args.dataset+'_fp_exp.p', 'wb'))
+      data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=True, dp_eps=args.dp_epsilon, dp_delta=args.dp_delta, beta=args.beta, num_rounds=args.num_rounds, eq_fp=args.fp, use_sa=args.sa, balance_eps=args.bal_eps)
+  pickle.dump(data, open('{}_{}_{}_{}_{}_{}_{}_{}_msr.p'.format(args.dataset, args.dp_epsilon, args.dp_delta, args.beta, args.num_rounds, 
+                                                                'fp' if args.fp else 'eo', 'sens' if args.sa else 'nosens',
+                                                                'epsbal' if args.bal_eps else 'epseven'), 'wb'))

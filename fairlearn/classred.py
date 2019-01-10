@@ -155,7 +155,7 @@ class _Lagrangian:
                                  self.eval_gap(h, lambda_vec, nu))
         return self.last_linprog_res
 
-    def best_h(self, lambda_vec, use_dp=False, dp_params=None):
+    def best_h(self, lambda_vec, use_dp=False, dp_params=None, use_sa=False, sens_params=None):
         # Return the classifier that solves the best-response problem
         # for the vector of Lagrange multipliers lambda_vec.
     
@@ -166,7 +166,8 @@ class _Lagrangian:
         redW = self.n*redW/redW.sum()
 
         classifier = pickle.loads(self.pickled_learner)
-        classifier.fit(self.X, redY, redW, use_dp=use_dp, dp_params=dp_params)
+        classifier.fit(self.X, redY, redW, use_dp=use_dp, dp_params=dp_params,
+                       use_sa=use_sa, sens_params=sens_params)
         self.n_oracle_calls += 1
         
         h = lambda X: classifier.predict(X)
@@ -226,7 +227,7 @@ _RUN_LP_STEP = True
 
 
 def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01, B=None,
-            T=50, nu=None, beta=0.01, eta_mul=2.0, use_dp=False, dp_eps=100, dp_delta=1, debug=False):
+            T=50, nu=None, beta=0.01, eta_mul=2.0, use_dp=False, dp_eps=100, dp_delta=1, use_sa=False, sens_params=None, debug=False):
     """
     Return a fair classifier under specified fairness constraints
     via exponentiated-gradient reduction.
@@ -333,7 +334,7 @@ def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01, B=None,
           dp_params = K, dp_eps
         else:
           dp_params = None
-        h, h_idx = lagr.best_h(lambda_vec, use_dp=use_dp, dp_params=dp_params)
+        h, h_idx = lagr.best_h(lambda_vec, use_dp=use_dp, dp_params=dp_params, use_sa=use_sa, sens_params=sens_params)
         pred_h = h(dataX)
 
         if t == 0:
