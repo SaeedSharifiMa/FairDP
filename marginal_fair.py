@@ -488,7 +488,7 @@ gamma_list = sorted(set(base_gamma_list + list(np.linspace(0.01, 0.2, 51))))
 
 # by default, run on gamma, B = (gamma, 1/gamma) for each element in gamma_list
 # to run on a different set of gamma, B pairs, change this list
-default_eps_B_list = [(gamma, 1/gamma) for gamma in gamma_list][:2]
+default_eps_B_list = [(gamma, 1/gamma) for gamma in gamma_list]
 
 
 def setup_argparse():
