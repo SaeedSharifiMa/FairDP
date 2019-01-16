@@ -91,12 +91,12 @@ class RegressionLearner:
             hess += hess_noise
 
             # make private reg0
-            priv_c0 = np.linalg.solve(hess, xtc0)
+            priv_c0, _, _, _ = np.linalg.lstsq(hess, xtc0)
             self.reg0.intercept_ = priv_c0[-1]
             self.reg0.weights_ = priv_c0[:-1]
           else:
             self.reg0.fit(X, cost_vec0)
-            priv_c1 = np.linalg.solve(hess, xtc1)
+            priv_c1, _, _, _ = np.linalg.lstsq(hess, xtc1)
             self.reg1.intercept_ = priv_c1[-1]
             self.reg1.weights_ = priv_c1[:-1]
         else:
