@@ -91,34 +91,19 @@ class RegressionLearner:
             hess += hess_noise
 
             # make private reg0
-            priv_c0 = np.dot(hess, xtc0)
+            priv_c0 = np.linalg.solve(hess, xtc0)
             self.reg0.intercept_ = priv_c0[-1]
             self.reg0.weights_ = priv_c0[:-1]
           else:
             self.reg0.fit(X, cost_vec0)
-            priv_c1 = np.dot(hess, xtc1)
+            priv_c1 = np.linalg.solve(hess, xtc1)
             self.reg1.intercept_ = priv_c1[-1]
             self.reg1.weights_ = priv_c1[:-1]
         else:
           self.reg1.fit(X, cost_vec1)
-
-    def train(self, X, Y, W):
-      cost_vec0 = Y * W
-      cost_vec1 = (1-Y) * W
-      self.reg0 = linear_model.LinearRegression()
-      self.reg0.fit(X, cost_vec0)
-      self.reg1 = linear_model.LinearRegression()
-      if np.allclose(X[:,-1],1): # last column is a intercept column
-        new_X = X
-      else:
-        new_X = np.concatenate(X, np.ones(shape=(X.shape[0], 1)), axis=1)
-      hess = (np.dot(new_X.T, new_X))
-      xtc1 = np.dot(new_X.T, cost_vec1)
-      if use_dp:
-        xtc1 += np.random.laplace(2*K*X.shape[0])
-      priv_c1 = np.dot(hess, xtc1)
-      self.reg1.intercept_ = priv_c1[-1]
-      self.reg1.weights_ = priv_c1[:-1]
+ 
+        print(self.reg0.score(X, cost_vec0), self.reg1.score(X, cost_vec1))
+      
 
     def predict(self, X):
         pred0 = self.reg0.predict(X)
@@ -490,7 +475,7 @@ gamma_list = sorted(set(base_gamma_list + list(np.linspace(0.01, 0.2, 51))))
 # to run on a different set of gamma, B pairs, change this list
 default_eps_B_list = [(gamma, 1/gamma) for gamma in gamma_list]
 
-
+print(len(default_eps_B_list))
 def setup_argparse():
   parser = argparse.ArgumentParser('run fair MSR reduction')
   parser.add_argument('-eps', '--dp_epsilon', type=float, default=-1, help='epsilon parameter for differential privacy. do not set to run nonprivate algorithm')
