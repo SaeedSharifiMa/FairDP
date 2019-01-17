@@ -38,7 +38,7 @@ class RegressionLearner:
     def __init__(self):
         self.weights = None
 
-    def fit(self, X, Y, W, use_dp=False, dp_params=None):
+    def fit(self, X, Y, W, use_dp=False, dp_params=None, use_sa=None, sens_params=None):
         cost_vec0 = Y * W  # cost vector for predicting zero
         cost_vec1 = (1 - Y) * W
         self.reg0 = linear_model.LinearRegression()
@@ -439,7 +439,7 @@ gamma_list = sorted(set(base_gamma_list + list(np.linspace(0.01, 0.2, 51))))
 
 # by default, run on gamma, B = (gamma, 1/gamma) for each element in gamma_list
 # to run on a different set of gamma, B pairs, change this list
-default_eps_B_list = [(gamma, 1/gamma) for gamma in gamma_list][:2]
+default_eps_B_list = [(gamma, 1/gamma) for gamma in gamma_list][:1]
 
 
 def setup_argparse():
@@ -462,4 +462,5 @@ if __name__=='__main__':
     data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=False, beta=args.beta, eq_fp=args.fp, use_sa=args.sa)
   else:
       data = run_eps_list_FP(default_eps_B_list, args.dataset, use_dp=True, dp_eps=args.dp_epsilon, dp_delta=args.dp_delta, beta=args.beta, num_rounds=args.num_rounds, eq_fp=args.fp, use_sa=args.sa)
-  pickle.dump(data, open(args.dataset+'_fp_exp.p', 'wb'))
+  pickle.dump(data, open('{}_{}_{}_{}_{}_{}_{}_msr.p'.format(args.dataset, args.dp_epsilon, args.dp_delta, args.beta, args.num_rounds, 
+                                                                'fp' if args.fp else 'eo', 'sens' if args.sa else 'nosens'), 'wb'))
