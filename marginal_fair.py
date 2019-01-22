@@ -44,23 +44,25 @@ class RegressionLearner:
         self.reg0 = linear_model.LinearRegression()
         self.reg0.fit(X, cost_vec0)
         self.reg1 = linear_model.LinearRegression()
+        self.reg1.fit(X, cost_vec1)  # need to let the model think it's been fit before
         if np.allclose(X.values[:,-1], 1): # last column is a intercept column
           new_X = X.values
         else:
           new_X = np.concatenate((X.values, np.ones(shape=(X.values.shape[0], 1))), axis=1)
         hess = (np.dot(new_X.T, new_X))
         xtc1 = np.dot(new_X.T, cost_vec1)
-        if use_dp:
+        if use_dp:  # need to add appropriate laplace noise
           n = new_X.shape[0]
-          K, dp_eps = dp_params
-          print("XTC1 laplace scale:", 2*K*X.shape[0]/dp_eps)
-          xtc1 += np.random.laplace(2*K*X.shape[0]/dp_eps, size=xtc1.shape)
-        priv_c1 = np.dot(hess, xtc1)
+          K, dp_eps_prime = dp_params
+          print("XTC1 laplace scale:", 2*K*X.shape[0]/dp_eps_prime)
+          xtc1 += np.random.laplace(2*K*X.shape[0]/dp_eps_prime, size=xtc1.shape)
+        priv_c1, _, _, _ = np.linalg.lstsq(hess, xtc1, rcond=None)  # solve for the correct model weights
+        #print(self.reg1.intercept_ - priv_c1[-1], np.linalg.norm(priv_c1[:-1]-self.reg1.coef_))
         self.reg1.intercept_ = priv_c1[-1]
-        self.reg1.weights_ = priv_c1[:-1]
-        self.reg1.fit(X, cost_vec1)
+        self.reg1.coef_ = priv_c1[:-1]
+        
 
-    def train(self, X, Y, W):
+    def train(self, X, Y, W, use_dp=True):  # pretty sure this never gets called
       cost_vec0 = Y * W
       cost_vec1 = (1-Y) * W
       self.reg0 = linear_model.LinearRegression()
@@ -73,11 +75,11 @@ class RegressionLearner:
       hess = (np.dot(new_X.T, new_X))
       xtc1 = np.dot(new_X.T, cost_vec1)
       if use_dp:
-        xtc1 += np.random.laplace(2*K*X.shape[0])
-      priv_c1 = np.dot(hess, xtc1)
+        xtc1 += np.random.laplace(2*K*X.shape[0]/dp_eps_prime, size=xtc1.shape)
+      priv_c1, _, _, _ = np.linalg.lstsq(hess, xtc1)
       self.reg1.intercept_ = priv_c1[-1]
-      self.reg1.weights_ = priv_c1[:-1]
-
+      self.reg1.coef_ = priv_c1[:-1]
+      
     def predict(self, X):
         pred0 = self.reg0.predict(X)
         pred1 = self.reg1.predict(X)
@@ -309,23 +311,53 @@ def run_eps_list_FP(eps_B_list, dataset, use_dp=False, dp_eps=-1, dp_delta=-1, b
     gamma_values = {}
     err_values = {}
     eps_values = {}
+
+    n = x_no_sens.shape[0]
+    allA = np.unique(a_prime).ravel()
+    sizeA = allA.size
+    vcdim = x_no_sens.shape[1]+1
+    from scipy.optimize import fsolve
+
     for eps, B in eps_B_list:
         all_err_values = []
         all_gamma_values = []
         all_eps_values = []
+
+        if use_dp:
+          T_numerator = B*np.sqrt(np.log(4*sizeA-3))*x_no_sens.shape[0]*dp_eps
+          T_denominator = 2*(2*B*sizeA+1)*np.sqrt(np.log(1/dp_delta))*(vcdim*np.log(n)+np.log(2/beta))
+          T = T_numerator/T_denominator
+          T = max(1, int(T))
+          
+          def tight_comp(eps_prime):
+            # tight advanced composition
+            first_term = np.sqrt(4*T*np.log(1/dp_delta))*eps_prime
+            second_term = 2*T*eps_prime*(np.exp(eps_prime) - 1)
+            return dp_eps - 0.5*(first_term + second_term)
+          eps_prime = fsolve(tight_comp, 1)[0]
+
+
         for _ in range(num_rounds):
+          if use_dp:
+            res_tuple = red.expgrad(x_no_sens, a_prime, y, learner,
+                                    cons=marginal_EO(sens_attr), eps=eps, B=B, T=T,
+                                    use_dp=use_dp, dp_eps_prime=eps_prime,
+                                    beta=beta, debug=True)
+          else:
             res_tuple = red.expgrad(x_no_sens, a_prime, y, learner,
                                     cons=marginal_EO(sens_attr), eps=eps, B=B,
-                                    use_dp=use_dp, dp_eps=dp_eps, dp_delta=dp_delta,
+                                    use_dp=False, dp_eps_prime=10000,
                                     beta=beta, debug=True)
-            weighted_pred = weighted_predictions(res_tuple, x_no_sens)
-            all_err_values.append(sum(np.abs(y - weighted_pred)) / len(y))  # err 
-            all_gamma_values.append(audit.audit(weighted_pred, x_no_sens, a, y))    # gamma
-            all_eps_values.append(compute_FP(a_prime, y, weighted_pred))
-            print('gamma ', all_gamma_values[-1])
-            print('err ', all_err_values[-1])
-            print('EO: ', compute_EO(a_prime, y, weighted_pred))
-            print('FP: ', compute_FP(a, y, weighted_pred))
+          
+          
+          weighted_pred = weighted_predictions(res_tuple, x_no_sens)
+          all_err_values.append(sum(np.abs(y - weighted_pred)) / len(y))  # err 
+          all_gamma_values.append(audit.audit(weighted_pred, x_no_sens, a, y))    # gamma
+          all_eps_values.append(compute_FP(a_prime, y, weighted_pred))
+          print('gamma ', all_gamma_values[-1])
+          print('err ', all_err_values[-1])
+          print('EO: ', compute_EO(a_prime, y, weighted_pred))
+          print('FP: ', compute_FP(a, y, weighted_pred))
         err_values[eps, B] = sum(all_err_values)/num_rounds
         gamma_values[eps, B] = sum(all_gamma_values)/num_rounds
         eps_values[eps, B] = sum(all_eps_values)/num_rounds
@@ -439,7 +471,7 @@ gamma_list = sorted(set(base_gamma_list + list(np.linspace(0.01, 0.2, 51))))
 
 # by default, run on gamma, B = (gamma, 1/gamma) for each element in gamma_list
 # to run on a different set of gamma, B pairs, change this list
-default_eps_B_list = [(gamma, 1/gamma) for gamma in gamma_list][:1]
+default_eps_B_list = [(gamma, 1/gamma) for gamma in gamma_list]
 
 
 def setup_argparse():

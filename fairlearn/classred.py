@@ -227,7 +227,7 @@ _RUN_LP_STEP = True
 
 
 def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01, B=None,
-            T=50, nu=None, beta=0.01, eta_mul=2.0, use_dp=False, dp_eps=100, dp_delta=1, use_sa=False, sens_params=None, debug=False):
+            T=50, nu=None, beta=0.01, eta_mul=2.0, use_dp=False, dp_eps_prime=100, use_sa=False, sens_params=None, debug=False):
     """
     Return a fair classifier under specified fairness constraints
     via exponentiated-gradient reduction.
@@ -301,16 +301,10 @@ def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01, B=None,
     minp_ay = np.min(AYcounts)/n
     print("min probs:", minp_ay, minp_ay*n, n)
     if use_dp:
-      print("b", B, "n", n, "eps", dp_eps, sizeA)
-      T_numerator = B*np.sqrt(np.log(4*sizeA-3))*n*dp_eps
-      T_denominator = 2*(2*B*sizeA+1)*np.sqrt(np.log(1/dp_delta))*(vcdim*np.log(n)+np.log(2/beta))
-      T = T_numerator/T_denominator
-      T = max(1, int(T))
-      
       eta_mul = 0.5*np.sqrt(np.log(4*sizeA-3)/T)
       
-      lap_scale_numerator = 8*sizeA*np.sqrt(T*np.log(1/dp_delta))
-      lap_scale_denominator = (minp_ay*n - 1)*dp_eps
+      lap_scale_numerator = 2*sizeA
+      lap_scale_denominator = (minp_ay*n - 1)*dp_eps_prime
       lap_scale = lap_scale_numerator/lap_scale_denominator
       print("dp T {} eta_mul {} lap_scale {}".format(T, eta_mul, lap_scale))
 
@@ -331,7 +325,8 @@ def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01, B=None,
 
         if use_dp:
           K = (4*sizeA*B - 3)/(n*minp_ay - 1)
-          dp_params = K, dp_eps
+          print("learner params", K, n, dp_eps_prime)
+          dp_params = K, dp_eps_prime
         else:
           dp_params = None
         h, h_idx = lagr.best_h(lambda_vec, use_dp=use_dp, dp_params=dp_params, use_sa=use_sa, sens_params=sens_params)
