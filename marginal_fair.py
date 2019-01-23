@@ -55,7 +55,10 @@ class RegressionLearner:
           n = new_X.shape[0]
           K, dp_eps_prime = dp_params
           print("XTC1 laplace scale:", 2*K*X.shape[0]/dp_eps_prime)
-          xtc1 += np.random.laplace(2*K*X.shape[0]/dp_eps_prime, size=xtc1.shape)
+          for i in range(new_X.shape[1]):
+            max_abs = np.abs(new_X[:, i]).max()
+            print(max_abs)
+            xtc1[i] += np.random.laplace(2*K*X.shape[0]*max_abs/dp_eps_prime)
         priv_c1, _, _, _ = np.linalg.lstsq(hess, xtc1, rcond=None)  # solve for the correct model weights
         #print(self.reg1.intercept_ - priv_c1[-1], np.linalg.norm(priv_c1[:-1]-self.reg1.coef_))
         self.reg1.intercept_ = priv_c1[-1]

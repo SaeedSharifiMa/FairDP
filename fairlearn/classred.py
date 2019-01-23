@@ -324,7 +324,7 @@ def expgrad(dataX, dataA, dataY, learner, cons=moments.DP(), eps=0.01, B=None,
         lambda_EG = lambdas.mean(axis=1)
 
         if use_dp:
-          K = (4*sizeA*B - 3)/(n*minp_ay - 1)
+          K = (2*sizeA*B + 1)/(n*minp_ay - 1)
           print("learner params", K, n, dp_eps_prime)
           dp_params = K, dp_eps_prime
         else:
