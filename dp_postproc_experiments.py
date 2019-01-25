@@ -49,6 +49,6 @@ plt.xlabel('error')
 plt.ylabel('fairness violation')
 #####################################
 plt.title('dp_postproc, communities, base_clf = LR, epsilon = %i' %epsilon)
-plt.savefig('figures/postprocessing/postproc_communities_eps%i.png' %epsilon)
+#plt.savefig('figures/postprocessing/postproc_communities_eps%i.png' %epsilon)
 #####################################
 plt.show()
